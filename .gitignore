@@ -36,3 +36,6 @@ old
 openssl-node.cnf
 sample.ovpn
 config.json
+
+# IDEA
+.idea
