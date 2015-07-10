@@ -2,6 +2,7 @@ var spawn = require("child_process").spawn;
 var fs = require("fs");
 var exec = require("child_process").exec;
 var debug = require("debug");
+var path = require("path");
 var debugCA = debug("openvpn:ssl:ca");
 var debugREQ = debug("openvpn:ssl:req");
 
@@ -24,6 +25,25 @@ var OpenVPNClass = function(conf) {
     var config = files.sample.replace("%USER%", client).replace("%CERT%", files.cert).replace("%CA%", files.ca).replace("%KEY%", files.key);
     config = config.split("\r").join("").replace(/\n/g, "\r\n");
     callback(config);
+  };
+  var generateCRL = function(callback) {
+    if(!self.config) return false;
+    var args = [
+      'ca',
+      '-keyfile', self.config.path.serverCerts + "ca.key",
+      '-cert', self.config.path.serverCerts + "ca.crt",
+      '-gencrl',
+      '-out', self.config.path.serverCerts + "crl.pem",
+      '-config', self.config.path.sslConfig
+    ];
+    var child = spawn("openssl", args);
+    child.on('close', function(code) {
+      if(code == 0) {
+        callback(null);
+      } else {
+        callback(new Error("openssl failed (exit "+code+")"));
+      }
+    });
   };
 
   // Public functions
@@ -69,7 +89,7 @@ var OpenVPNClass = function(conf) {
 
     if(newConfig.ssl.keyBitSize)        defaultConfig.ssl.keyBitSize = newConfig.ssl.keyBitSize; else return false;
     if(newConfig.ssl.md)                defaultConfig.ssl.md = newConfig.ssl.md; else return false;
-    if(newConfig.ssl.expireDays)       defaultConfig.ssl.expireDays = newConfig.ssl.expireDays; else return false;
+    if(newConfig.ssl.expireDays)        defaultConfig.ssl.expireDays = newConfig.ssl.expireDays; else return false;
 
     if(newConfig.debug)                 defaultConfig.debug = newConfig.debug;
 
@@ -176,28 +196,14 @@ var OpenVPNClass = function(conf) {
       ];
       var child = spawn("openssl", args);
       child.on('close', function(code) {
-        if(code == 0) return callback(null, true);
+        if(code == 0) {
+          generateCRL(function(err) {
+            if(err) return callback(err, false);
+            callback(null, true);
+          });
+        }
         else return callback(new Error("openssl failed"), false);
       });
-    });
-  };
-  this.generateCRL = function(database, config, callback) {
-    if(!config) return false;
-    var args = [
-      'ca',
-      '-keyfile', config.path.serverCerts + "ca.key",
-      '-cert', config.path.serverCerts + "ca.crt",
-      '-gencrl',
-      '-out', config.path.serverCerts + "crl.pem",
-      '-config', config.path.sslConfig
-    ];
-    var child = spawn("openssl", args);
-    child.on('close', function(code) {
-      if(code == 0) {
-        callback(null, true);
-      } else {
-        callback(new Error("openssl failed (exit "+code+")"), false);
-      }
     });
   };
   this.createUserConfig = function(client, callback) {
@@ -243,11 +249,19 @@ var OpenVPNClass = function(conf) {
     });
   };
   this.deleteClient = function(client, callback) {
-    if(!config) return false;
+    if(!self.config) return false;
     self.revokeClient(client, function(err, success) {
-      if(err) return res.send({error: true, errmsg: err.toString()});
+      if(err) return callback(err);
       if(!success) return res.send({error: true, errmsg: "couldn't revoke client"});
-      //fs.unlink()
+      var i = 0;
+      var files = [client + ".key", client + ".crt", client + ".csr"];
+      files.forEach(function(file) {
+        fs.unlink(path.join(self.config.path.certificates, file), function(err) {
+          if(err) debug(err);
+          i++;
+          if(i == files.length) return callback(null);
+        });
+      });
     });
   };
 

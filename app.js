@@ -35,13 +35,20 @@ app.get("/user/:user/config", function(req, res) {
     res.send(config);
   });
 });
+app.get("/user/:user/revoke", function(req, res) {
+  if(!req.exists) return res.send({error: true, errmsg: "user doesnt exists"});
+  openvpn.revokeClient(req.params.user, function(err, success) {
+    if(err) return res.send({error: true, errmsg: err.toString()});
+    if(!success) return res.send({error: true, errmsg: "couldn't revoke user"});
+    res.send({error: false, revokedUser: req.params.user});
+  });
+});
 app.delete("/user/:user", function(req, res) {
   if(!req.exists) return res.send({error: true, errmsg: "user doesnt exists"});
   openvpn.deleteClient(req.params.user, function(err) {
     if(err) return res.send({error: true, errmsg: err.toString()});
-
+    res.send({error: false, deletedUser: req.params.user});
   });
-  res.send({delete: true});
 });
 
 // /users
