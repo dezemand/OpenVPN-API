@@ -1,0 +1,7 @@
+{
+  "name": "OpenVPN-API",
+  "dependencies": {
+    "debug": "^2.2.0",
+    "express": "^4.13.1"
+  }
+}
